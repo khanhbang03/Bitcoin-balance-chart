@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitcoin Balance Comparison (Kulpunai, Erzhan, Javokher)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #0f2027, #203a43, #2c5364);
+      color: white;
+      text-align: center;
+      padding: 30px;
+    }
+    canvas {
+      margin-top: 30px;
+      background: #ffffff10;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(255,255,255,0.2);
+    }
+    .controls {
+      margin: 20px auto;
+    }
+    input {
+      width: 100px;
+      margin: 5px;
+      border-radius: 5px;
+      padding: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Bitcoin Balances of Kulpunai, Erzhan, and Javokher (1980–3013)</h1>
+  <p>Simulating BTC balance evolution and checking affordability for DVDs and Movies 🍿💿</p>
+
+  <div class="controls">
+    <label>DVD Price ($): <input type="number" id="dvdPrice" value="20"></label>
+    <label>Movie Ticket Price ($): <input type="number" id="moviePrice" value="15"></label>
+    <label>BTC Price ($): <input type="number" id="btcPrice" value="70000"></label>
+    <button onclick="generateBalances()">Regenerate</button>
+  </div>
+
+  <canvas id="btcChart" width="800" height="400"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const ctx = document.getElementById('btcChart').getContext('2d');
+
+    function randomBalance(year) {
+      return Math.abs(Math.sin(year * 0.01) * 5 + Math.random() * 10);
+    }
+
+    function generateBalances() {
+      const years = [];
+      const start = 1980, end = 3013;
+      for (let y = start; y <= end; y += 10) years.push(y);
+
+      const people = ['Kulpunai', 'Erzhan', 'Javokher'];
+      const datasets = people.map((name, idx) => ({
+        label: name,
+        data: years.map(y => randomBalance(y) + idx * 2),
+        borderColor: `hsl(${idx * 120}, 80%, 60%)`,
+        fill: false,
+        tension: 0.25
+      }));
+
+      const dvdPrice = parseFloat(document.getElementById('dvdPrice').value);
+      const moviePrice = parseFloat(document.getElementById('moviePrice').value);
+      const btcPrice = parseFloat(document.getElementById('btcPrice').value);
+
+      const balancesUSD = datasets.map(d => d.data.map(b => b * btcPrice));
+      const affordability = balancesUSD.map(bal => bal.map(val => val / (dvdPrice + moviePrice)));
+
+      if (window.btcChartInstance) window.btcChartInstance.destroy();
+      window.btcChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: years, datasets },
+        options: {
+          plugins: {
+            title: { display: true, text: 'BTC Holdings over Time (1980–3013)' },
+            tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} BTC` } }
+          },
+          scales: {
+            y: { title: { display: true, text: 'BTC Balance' } },
+            x: { title: { display: true, text: 'Year' } }
+          }
+        }
+      });
+    }
+
+    generateBalances();
+  </script>
+</body>
+</html>
