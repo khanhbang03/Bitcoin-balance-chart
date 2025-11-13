@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bitcoin balances — Dr. Pooja & friends (1980–3013)</title>
+  <style>
+    :root{--bg:#0b1220;--card:#0f1724;--muted:#98a0b3}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071022 0%,#0b1220 100%);color:#e6eef8;margin:20px}
+    header{display:flex;gap:16px;align-items:center}
+    h1{font-size:20px;margin:0}
+    .small{color:var(--muted);font-size:13px}
+    .card{background:var(--card);border-radius:12px;padding:14px;margin-top:16px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    label{font-size:14px;color:#cfe1ff}
+    input[type=number]{width:120px;padding:6px;border-radius:8px;border:1px solid #263244;background:#071426;color:#e6eef8}
+    button{padding:8px 12px;border-radius:8px;border:none;background:#3b82f6;color:white;cursor:pointer}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;text-align:left;border-bottom:1px solid #192533}
+    canvas{width:100%;height:420px}
+    footer{color:var(--muted);font-size:13px;margin-top:12px}
+    @media(max-width:720px){canvas{height:300px}input[type=number]{width:100px}}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bitcoin balances — Dr. Pooja, Nguyen Thang Long, Pham Hoang Hai, Truong Ngoc Anh, Kylian Mbappé (1980 → 3013)</h1>
+      <div class="small">Synthetic demo data — change BTC, DVD and movie prices to compute purchasing power.</div>
+    </div>
+    <div style="margin-left:auto">
+      <button id="exportBtn">Download CSV</button>
+    </div>
+  </header>
+
+  <div class="card controls">
+    <label>BTC price (USD): <input id="btcPrice" type="number" value="30000" step="100" /></label>
+    <label>DVD price (USD): <input id="dvdPrice" type="number" value="15" step="0.5" /></label>
+    <label>Movie ticket (USD): <input id="moviePrice" type="number" value="12" step="0.5" /></label>
+    <label>Data step (years): <input id="sampleRate" type="number" value="10" min="1" max="500" /></label>
+    <button id="regen">Regenerate</button>
+  </div>
+
+  <div class="card">
+    <div><canvas id="btcChart"></canvas></div>
+
+    <table id="summary">
+      <thead><tr><th>Person</th><th>Latest (BTC)</th><th>Value (USD)</th><th>DVDs</th><th>Movies</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <footer>Note: All balances are synthetic, produced by a deterministic generator for demo and visualization purposes only.</footer>
+  </div>
+
+<script>
+// deterministic RNG
+function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+
+function yearsBetween(start,end,step){const arr=[];for(let y=start;y<=end;y+=step)arr.push(y);if(arr[arr.length-1]!==end)arr.push(end);return arr}
+
+function generateSeries(seed,years){const rnd=mulberry32(seed);let v=0.002 + rnd()*0.04;const out=[];for(let i=0;i<years.length;i++){const year=years[i];const drift=0.00045*Math.log(1+year-1970);v=Math.max(0,v*(1+(rnd()-0.5)*0.28+drift)+ (rnd()-0.5)*0.02);if(rnd()<0.018) v+=rnd()*1.8;out.push(+v.toFixed(8));}return out}
+
+const START=1980, END=3013;
+const people=[
+  {name:'Dr. Pooja', seed:301},
+  {name:'Nguyen Thang Long', seed:302},
+  {name:'Pham Hoang Hai', seed:303},
+  {name:'Truong Ngoc Anh', seed:304},
+  {name:'Kylian Mbappé', seed:305}
+];
+
+let datasets={};let years=yearsBetween(START,END,10);
+function regenerate(){const step=parseInt(document.getElementById('sampleRate').value,10)||10;years=yearsBetween(START,END,step);datasets={};for(const p of people)datasets[p.name]=generateSeries(p.seed,years);} 
+regenerate();
+
+// draw chart
+const ctx=document.getElementById('btcChart');let chart=null;
+function drawChart(){const palette=['#4f46e5','#06b6d4','#10b981','#f97316','#ef4444'];const ds=Object.keys(datasets).map((k,i)=>({label:k,data:datasets[k],tension:0.24,pointRadius:2,borderWidth:2,borderColor:palette[i%palette.length],fill:false}));if(chart)chart.destroy();chart=new Chart(ctx.getContext('2d'),{type:'line',data:{labels:years,datasets:ds},options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{title:{display:true,text:'Synthetic BTC balances (per selected years)'},tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+c.formattedValue+' BTC'}}}},scales:{x:{title:{display:true,text:'Year'}},y:{title:{display:true,text:'Balance (BTC)'}}}}});}
+
+drawChart();
+
+function updateSummary(){const btcPrice=parseFloat(document.getElementById('btcPrice').value)||30000;const dvdPrice=parseFloat(document.getElementById('dvdPrice').value)||15;const moviePrice=parseFloat(document.getElementById('moviePrice').value)||12;const tbody=document.querySelector('#summary tbody');tbody.innerHTML='';for(const p of Object.keys(datasets)){const arr=datasets[p];const latest=arr[arr.length-1]||0;const usd=latest*btcPrice;const dvds=Math.floor(usd/dvdPrice);const movies=Math.floor(usd/moviePrice);const tr=document.createElement('tr');tr.innerHTML=`<td><strong>${p}</strong></td><td>${latest.toFixed(8)}</td><td>$${usd.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${dvds}</td><td>${movies}</td>`;tbody.appendChild(tr);} }
+
+updateSummary();
+
+document.getElementById('regen').addEventListener('click',()=>{regenerate();drawChart();updateSummary();});['btcPrice','dvdPrice','moviePrice','sampleRate'].forEach(id=>document.getElementById(id).addEventListener('input',updateSummary));
+
+// CSV export
+document.getElementById('exportBtn').addEventListener('click',function(){let csv=['Year,'+Object.keys(datasets).join(',')];for(let i=0;i<years.length;i++){const row=[years[i]];for(const p of Object.keys(datasets))row.push(datasets[p][i]||'');csv.push(row.join(','));}const blob=new Blob([csv.join('')],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='btc_balances_1980-3013_group.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
+
+</script>
+</body>
+</html>
