@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bitcoin balances — Multiple people (1980–10000)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 20px; color: #0b1220 }
+    header { display:flex; align-items:center; gap:16px }
+    h1 { margin:0; font-size:20px }
+    .controls { margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    label { font-size:14px }
+    input[type=number] { width:120px; padding:6px; border-radius:6px; border:1px solid #ccc }
+    .card { background:#fff; border-radius:10px; box-shadow:0 6px 18px rgba(4,12,24,0.08); padding:16px; margin-top:16px }
+    #chartWrap { height:420px }
+    table { width:100%; border-collapse:collapse; margin-top:12px }
+    th,td { padding:8px; text-align:left; border-bottom:1px solid #eee }
+    .small { font-size:13px; color:#555 }
+    .download { margin-left:auto }
+    footer { margin-top:18px; font-size:13px; color:#555 }
+    @media (max-width:720px){ #chartWrap{height:300px} }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bitcoin balances — Group (1980 → 10000)</h1>
+      <div class="small">Synthetic demo data for many people. Change BTC/item prices to see how many DVDs, movie tickets, and popcorns each person can buy.</div>
+    </div>
+    <div class="download">
+      <button id="exportBtn">Download CSV</button>
+    </div>
+  </header>
+
+  <div class="controls card">
+    <label for="btcPrice">BTC price (USD): </label>
+    <input id="btcPrice" type="number" value="30000" step="100" />
+
+    <label for="dvdPrice">DVD price (USD): </label>
+    <input id="dvdPrice" type="number" value="15" step="0.5" />
+
+    <label for="moviePrice">Movie ticket (USD): </label>
+    <input id="moviePrice" type="number" value="12" step="0.5" />
+
+    <label for="popcornPrice">Popcorn (USD): </label>
+    <input id="popcornPrice" type="number" value="6" step="0.5" />
+
+    <label for="sampleRate">Data points every (years): </label>
+    <input id="sampleRate" type="number" value="50" min="1" max="1000" />
+
+    <button id="regen">Regenerate & Redraw</button>
+  </div>
+
+  <div class="card">
+    <div id="chartWrap"><canvas id="btcChart"></canvas></div>
+
+    <table id="summary">
+      <thead>
+        <tr><th>Person</th><th class="small">Latest balance (BTC)</th><th class="small">Value (USD)</th><th class="small">DVDs</th><th class="small">Movies</th><th class="small">Popcorns</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <footer>Note: Data are synthetic (generated) between year 1980 and 10000. This is a visualization tool — change the BTC price to calculate purchasing power.</footer>
+  </div>
+
+<script>
+function mulberry32(a) {
+  return function() {
+    var t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+function generateSeries(seed, years) {
+  const rnd = mulberry32(seed);
+  let balances = [];
+  let val = 0.001 + rnd()*0.05;
+  for (let i=0;i<years.length;i++){
+    const drift = 0.0004 * Math.log(1 + years[i]-1980);
+    val = Math.max(0, val * (1 + (rnd()-0.48)*0.3 + drift) + (rnd()-0.5)*0.03);
+    if (rnd() < 0.015) val += rnd()*3;
+    balances.push(+val.toFixed(8));
+  }
+  return balances;
+}
+
+function yearsBetween(start, end, step){
+  const arr = [];
+  for (let y=start;y<=end;y+=step) arr.push(y);
+  if (arr[arr.length-1] !== end) arr.push(end);
+  return arr;
+}
+
+const START = 1980, END = 10000;
+
+let people = [
+  {name:'Hung', seed:101}, {name:'Tuan', seed:102}, {name:'Duong', seed:103}, {name:'Huy', seed:104}, {name:'Dong', seed:105},
+  {name:'Hieu', seed:106}, {name:'Chung', seed:107}, {name:'Trung', seed:108}, {name:'Phong', seed:109}, {name:'Mrudav', seed:110},
+  {name:'Devika', seed:111}, {name:'Tran Duc Manh', seed:112}, {name:'Minh', seed:113}, {name:'Ali', seed:114}, {name:'Aryan', seed:115},
+  {name:'Nam Per', seed:116}, {name:'Le Bao', seed:117}, {name:'Dung', seed:118}, {name:'Phong Phung', seed:119}, {name:'Quang Dung', seed:120},
+  {name:'Khanh Bang', seed:121}, {name:'Hoang Nam', seed:122}, {name:'JP', seed:123}, {name:'DJ Khaled', seed:124}, {name:'Vu Thanh Quan', seed:125},
+  {name:'Nguyen Tung Quan', seed:126}
+];
+
+let datasets = {};
+let years = yearsBetween(START, END, parseInt(document.getElementById('sampleRate').value,10));
+
+function regenerate(){
+  const step = parseInt(document.getElementById('sampleRate').value,10) || 50;
+  years = yearsBetween(START, END, step);
+  datasets = {};
+  for(const p of people){ datasets[p.name] = generateSeries(p.seed, years); }
+}
+
+regenerate();
+
+const ctx = document.getElementById('btcChart');
+let chart = null;
+function drawChart(){
+  const palette = [
+    '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'
+  ];
+  const keys = Object.keys(datasets);
+  const ds = keys.map((k,i)=>({ label:k, data:datasets[k], tension:0.25, pointRadius:1, borderWidth:2, borderColor:palette[i%palette.length], fill:false }));
+  if(chart) chart.destroy();
+  chart = new Chart(ctx.getContext('2d'),{
+    type:'line', data:{ labels: years, datasets: ds },
+    options:{ responsive:true, interaction:{mode:'nearest',intersect:false}, plugins:{ title:{display:true,text:'BTC balances (synthetic) — per selected years'} }, scales:{ x:{ title:{display:true,text:'Year'} }, y:{ title:{display:true,text:'Balance (BTC)'} } }
+    }
+  });
+}
+
+drawChart();
+
+function updateSummary(){
+  const btcPrice = parseFloat(document.getElementById('btcPrice').value) || 30000;
+  const dvdPrice = parseFloat(document.getElementById('dvdPrice').value) || 15;
+  const moviePrice = parseFloat(document.getElementById('moviePrice').value) || 12;
+  const popcornPrice = parseFloat(document.getElementById('popcornPrice').value) || 6;
+  const tbody = document.querySelector('#summary tbody');
+  tbody.innerHTML = '';
+  for(const p of Object.keys(datasets)){
+    const arr = datasets[p];
+    const latest = arr[arr.length-1] || 0;
+    const usd = latest * btcPrice;
+    const dvds = Math.floor(usd / dvdPrice);
+    const movies = Math.floor(usd / moviePrice);
+    const popcorns = Math.floor(usd / popcornPrice);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${p}</strong></td><td>${latest.toFixed(8)}</td><td>$${usd.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${dvds}</td><td>${movies}</td><td>${popcorns}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+updateSummary();
+
+document.getElementById('regen').addEventListener('click',()=>{ regenerate(); drawChart(); updateSummary(); });
+['btcPrice','dvdPrice','moviePrice','popcornPrice'].forEach(id=>{ document.getElementById(id).addEventListener('input', updateSummary); });
+
+document.getElementById('exportBtn').addEventListener('click', function(){
+  let csv = ['Year,'+Object.keys(datasets).join(',')];
+  for(let i=0;i<years.length;i++){
+    const row = [years[i]];
+    for(const p of Object.keys(datasets)) row.push(datasets[p][i] || '');
+    csv.push(row.join(','));
+  }
+  const blob = new Blob([csv.join('')],{type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'bitcoin_balances_1980-10000.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+
+</script>
+</body>
+</html>

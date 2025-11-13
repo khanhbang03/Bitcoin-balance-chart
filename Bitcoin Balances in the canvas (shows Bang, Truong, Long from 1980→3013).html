@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bitcoin balances — Bang, Truong, Long (1980–3013)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 20px; color: #0b1220 }
+    header { display:flex; align-items:center; gap:16px }
+    h1 { margin:0; font-size:20px }
+    .controls { margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    label { font-size:14px }
+    input[type=number] { width:120px; padding:6px; border-radius:6px; border:1px solid #ccc }
+    .card { background:#fff; border-radius:10px; box-shadow:0 6px 18px rgba(4,12,24,0.08); padding:16px; margin-top:16px }
+    #chartWrap { height:420px }
+    table { width:100%; border-collapse:collapse; margin-top:12px }
+    th,td { padding:8px; text-align:left; border-bottom:1px solid #eee }
+    .small { font-size:13px; color:#555 }
+    .download { margin-left:auto }
+    footer { margin-top:18px; font-size:13px; color:#555 }
+    @media (max-width:720px){ #chartWrap{height:300px} }
+  </style>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bitcoin balances — Bang, Truong, Long (1980 → 3013)</h1>
+      <div class="small">Synthetic demo data. Use the BTC price control to see purchasing power for a DVD and a movie ticket.</div>
+    </div>
+    <div class="download">
+      <button id="exportBtn">Download CSV</button>
+    </div>
+  </header>
+
+  <div class="controls card">
+    <label for="btcPrice">BTC price (USD): </label>
+    <input id="btcPrice" type="number" value="30000" step="100" />
+
+    <label for="dvdPrice">DVD price (USD): </label>
+    <input id="dvdPrice" type="number" value="15" step="0.5" />
+
+    <label for="moviePrice">Movie ticket (USD): </label>
+    <input id="moviePrice" type="number" value="12" step="0.5" />
+
+    <label for="sampleRate">Data points every (years): </label>
+    <input id="sampleRate" type="number" value="10" min="1" max="100" />
+
+    <button id="regen">Regenerate & Redraw</button>
+  </div>
+
+  <div class="card">
+    <div id="chartWrap"><canvas id="btcChart"></canvas></div>
+
+    <table id="summary">
+      <thead>
+        <tr><th>Person</th><th class="small">Latest balance (BTC)</th><th class="small">Value (USD)</th><th class="small">DVDs affordable</th><th class="small">Movies affordable</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <footer>Note: Data are synthetic (generated programmatically) between year 1980 and 3013. This is a visualization tool — change the BTC price to calculate purchasing power.</footer>
+  </div>
+
+<script>
+// Utility: deterministic pseudo-random using seed
+function mulberry32(a) {
+  return function() {
+    var t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+function generateSeries(seed, years, steps) {
+  const rnd = mulberry32(seed);
+  let balances = [];
+  // start with small balances in early years, grow slowly and with volatility
+  let val = 0.01 + rnd()*0.05;
+  for (let i=0;i<years.length;i++){
+    // random walk with occasional leaps
+    const drift = (0.0003 * (years[i]-1980));
+    val = Math.max(0, val * (1 + (rnd()-0.48)*0.25 + drift*0.0001) + (rnd()-0.5)*0.02);
+    // occasionally give a big jump for 'early adopter' effect
+    if (rnd() < 0.02) val += rnd()*2;
+    balances.push(+val.toFixed(8));
+  }
+  return balances;
+}
+
+function yearsBetween(start, end, step){
+  const arr = [];
+  for (let y=start;y<=end;y+=step) arr.push(y);
+  if (arr[arr.length-1] !== end) arr.push(end);
+  return arr;
+}
+
+// initial params
+const START = 1980, END = 3013;
+let sampleStep = parseInt(document.getElementById('sampleRate').value,10);
+let years = yearsBetween(START, END, sampleStep);
+
+let people = [
+  {name:'Bang', seed: 12345},
+  {name:'Truong', seed: 67890},
+  {name:'Long', seed: 24680}
+];
+
+let datasets = {};
+function regenerate() {
+  sampleStep = parseInt(document.getElementById('sampleRate').value,10) || 10;
+  years = yearsBetween(START, END, sampleStep);
+  datasets = {};
+  datasets['Bang'] = generateSeries(12345, years, sampleStep);
+  datasets['Truong'] = generateSeries(67890, years, sampleStep);
+  datasets['Long'] = generateSeries(24680, years, sampleStep);
+}
+
+regenerate();
+
+// Chart.js plotting
+const ctx = document.getElementById('btcChart');
+let chart = null;
+function drawChart(){
+  const colors = ['#1f77b4','#ff7f0e','#2ca02c'];
+  const ds = Object.keys(datasets).map((k,i)=>({
+    label:k,
+    data: datasets[k],
+    tension:0.25,
+    pointRadius:2,
+    borderWidth:2,
+    borderColor: colors[i%colors.length],
+    fill:false
+  }));
+
+  if(chart) chart.destroy();
+  chart = new Chart(ctx.getContext('2d'),{
+    type:'line',
+    data:{ labels: years, datasets: ds },
+    options:{
+      responsive:true,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        title:{display:true,text:'BTC balances (synthetic) — per selected years'},
+        tooltip:{callbacks:{label:function(ctx){ return ctx.dataset.label+': '+ctx.formattedValue+' BTC'; }}}
+      },
+      scales:{
+        x:{ title:{display:true,text:'Year'} },
+        y:{ title:{display:true,text:'Balance (BTC)'} }
+      }
+    }
+  });
+}
+
+drawChart();
+
+function updateSummary(){
+  const btcPrice = parseFloat(document.getElementById('btcPrice').value) || 30000;
+  const dvdPrice = parseFloat(document.getElementById('dvdPrice').value) || 15;
+  const moviePrice = parseFloat(document.getElementById('moviePrice').value) || 12;
+  const tbody = document.querySelector('#summary tbody');
+  tbody.innerHTML = '';
+  for(const p of Object.keys(datasets)){
+    const arr = datasets[p];
+    const latest = arr[arr.length-1] || 0;
+    const usd = latest * btcPrice;
+    const dvds = Math.floor(usd / dvdPrice);
+    const movies = Math.floor(usd / moviePrice);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${p}</strong></td><td>${latest.toFixed(8)}</td><td>$${usd.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${dvds}</td><td>${movies}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+updateSummary();
+
+// Regenerate handler
+document.getElementById('regen').addEventListener('click',()=>{
+  regenerate();
+  drawChart();
+  updateSummary();
+});
+
+// Recompute when BTC price or item prices change
+['btcPrice','dvdPrice','moviePrice'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', updateSummary);
+});
+
+// CSV download
+function downloadCSV(){
+  // header: Year,Bang,Truong,Long
+  let csv = ['Year,'+Object.keys(datasets).join(',')];
+  for(let i=0;i<years.length;i++){
+    const row = [years[i]];
+    for(const p of Object.keys(datasets)) row.push(datasets[p][i] || '');
+    csv.push(row.join(','));
+  }
+  const blob = new Blob([csv.join('\n')],{type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'bitcoin_balances_1980-3013.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('exportBtn').addEventListener('click', downloadCSV);
+
+</script>
+</body>
+</html>
